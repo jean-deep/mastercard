@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backoffice - Registro de Accesos Máster</title>
+    <!-- Tailwind CSS para los estilos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Animaciones para las alertas (toasts) */
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeOut {
+            from {
+                opacity: 1;
+            }
+
+            to {
+                opacity: 0;
+            }
+        }
+
+        .toast-enter {
+            animation: slideIn 0.3s ease-out forwards;
+        }
+
+        .toast-exit {
+            animation: fadeOut 0.5s ease-out forwards;
+        }
+
+        /* Animación de campana */
+        @keyframes ring {
+            0% {
+                transform: rotate(0);
+            }
+
+            10% {
+                transform: rotate(15deg);
+            }
+
+            20% {
+                transform: rotate(-10deg);
+            }
+
+            30% {
+                transform: rotate(5deg);
+            }
+
+            40% {
+                transform: rotate(-5deg);
+            }
+
+            50% {
+                transform: rotate(0);
+            }
+
+            100% {
+                transform: rotate(0);
+            }
+        }
+
+        .ringing {
+            animation: ring 1s ease-in-out;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-800 font-sans h-screen overflow-hidden flex flex-col md:flex-row">
+
+    <!-- Modal de Asociación de Usuario -->
+    <div id="modal-asociacion"
+        class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center opacity-0 transition-opacity duration-300">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden transform scale-95 transition-transform duration-300"
+            id="modal-content">
+            <div class="bg-slate-800 p-4 flex justify-between items-center text-white">
+                <h3 class="font-bold text-lg">Vincular Acceso a Usuario</h3>
+                <button onclick="cerrarModal()" class="text-slate-400 hover:text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            <div class="p-6">
+                <!-- Info del acceso de la cámara -->
+                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 flex gap-4 items-center mb-6">
+                    <img id="modal-foto" src="" alt="Captura cámara"
+                        class="w-16 h-16 rounded-lg object-cover shadow-sm border border-slate-300">
+                    <div>
+                        <div class="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">Evidencia de
+                            Cámara</div>
+                        <div class="text-sm font-medium text-slate-800" id="modal-detalles">Entrada - 10:45:00</div>
+                        <div class="text-xs text-red-600 font-medium mt-1">Pendiente de regularizar</div>
+                    </div>
+                </div>
+
+                <!-- Buscador -->
+                <div class="mb-2">
+                    <label class="block text-sm font-medium text-slate-700 mb-2">Buscar usuario afectado</label>
+                    <div class="relative">
+                        <input type="text" id="buscador-usuarios" placeholder="Buscar por nombre o ID de empleado..."
+                            class="w-full border border-slate-300 rounded-lg pl-10 pr-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-400 absolute left-3 top-3"
+                            fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Resultados del buscador -->
+                <div id="lista-resultados"
+                    class="max-h-48 overflow-y-auto border border-slate-200 rounded-lg hidden bg-white shadow-inner divide-y divide-slate-100">
+                    <!-- Inyectado por JS -->
+                </div>
+
+                <div class="mt-6 flex justify-end gap-3 pt-4 border-t border-slate-100">
+                    <button onclick="cerrarModal()"
+                        class="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition">Cancelar</button>
+                    <button id="btn-confirmar" disabled onclick="confirmarAsociacion()"
+                        class="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg opacity-50 cursor-not-allowed transition hover:bg-blue-700">
+                        Habilitar Siguiente Paso
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contenedor de Alertas (Toasts) -->
+    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-3"></div>
+
+    <!-- ========================================== -->
+    <!-- MÓDULO BACKOFFICE (Para los encargados)    -->
+    <!-- ========================================== -->
+    <main class="flex-1 flex flex-col h-full overflow-hidden relative">
+
+        <header class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center shadow-sm z-10">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-800">Panel de Regularización de Accesos</h1>
+                <p class="text-sm text-slate-500">Vinculación manual de accesos máster con usuarios afectados</p>
+            </div>
+
+            <div class="relative flex items-center bg-slate-100 p-2 rounded-lg border border-slate-200">
+                <svg id="bell-icon" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-slate-600" fill="none"
+                    viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+                <span id="alert-badge"
+                    class="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full hidden">0</span>
+                <span class="ml-2 text-sm font-medium text-slate-700">Alertas Pendientes</span>
+            </div>
+        </header>
+
+        <div class="flex-1 overflow-auto p-6">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr
+                            class="bg-slate-50 border-b border-slate-200 text-sm text-slate-500 uppercase tracking-wider">
+                            <th class="p-4 font-semibold">Hora</th>
+                            <th class="p-4 font-semibold">Evidencia (Cámara)</th>
+                            <th class="p-4 font-semibold">Tipo de Acceso</th>
+                            <th class="p-4 font-semibold">Estado de la Cuenta</th>
+                            <th class="p-4 font-semibold text-right">Acción Requerida</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-registros" class="divide-y divide-slate-100 text-sm">
+                        <!-- Los registros se inyectarán aquí por JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- ========================================== -->
+    <!-- MÓDULO SIMULADOR DE TORNIQUETE/PUERTA      -->
+    <!-- ========================================== -->
+    <aside
+        class="w-full md:w-80 lg:w-96 bg-slate-800 text-white border-l border-slate-700 flex flex-col h-full shadow-2xl relative z-20">
+        <div class="p-6 border-b border-slate-700 bg-slate-900">
+            <h2 class="text-xl font-bold flex items-center gap-2">
+                <span>🚪</span> Torniquete Físico
+            </h2>
+            <p class="text-xs text-slate-400 mt-2">Simula el momento en que el personal pasa una tarjeta máster porque
+                el usuario tuvo una falla. El sistema solo capta la foto y el tipo de movimiento.</p>
+        </div>
+
+        <div class="p-6 flex-1 overflow-auto">
+            <div class="space-y-5">
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Sentido del Acceso Máster</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="cursor-pointer">
+                            <input type="radio" name="sim-tipo" value="Entrada" checked class="peer sr-only">
+                            <div
+                                class="text-center bg-slate-700 border border-slate-600 rounded-lg p-3 text-slate-300 peer-checked:bg-blue-600 peer-checked:text-white peer-checked:border-blue-500 transition font-medium">
+                                ⬇️ Entrada
+                            </div>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="radio" name="sim-tipo" value="Salida" class="peer sr-only">
+                            <div
+                                class="text-center bg-slate-700 border border-slate-600 rounded-lg p-3 text-slate-300 peer-checked:bg-orange-600 peer-checked:text-white peer-checked:border-orange-500 transition font-medium">
+                                ⬆️ Salida
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 p-4 rounded-lg border border-slate-700 text-center">
+                    <div class="text-4xl mb-2">📷</div>
+                    <p class="text-xs text-slate-400">Al simular, el sistema capturará automáticamente una foto
+                        aleatoria de la persona pasando por el control.</p>
+                </div>
+
+                <button onclick="simularAccesoMaster()"
+                    class="w-full mt-4 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-4 px-4 rounded-lg shadow-lg transform transition active:scale-95 flex justify-center items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Simular Paso con Tarjeta Máster
+                </button>
+            </div>
+        </div>
+    </aside>
+
+    <script>
+        // --- BASE DE DATOS FICTICIA DE USUARIOS DEL SISTEMA ---
+        const bdUsuarios = [
+            { id: "1001", nombre: "Juan Pérez", depto: "Sistemas", foto: "https://i.pravatar.cc/150?u=1001" },
+            { id: "1002", nombre: "María Gómez", depto: "Contabilidad", foto: "https://i.pravatar.cc/150?u=1002" },
+            { id: "1003", nombre: "Carlos Ruiz", depto: "Ventas", foto: "https://i.pravatar.cc/150?u=1003" },
+            { id: "1004", nombre: "Ana Martínez", depto: "Recursos Humanos", foto: "https://i.pravatar.cc/150?u=1004" },
+            { id: "1005", nombre: "Roberto Sánchez", depto: "Operaciones", foto: "https://i.pravatar.cc/150?u=1005" }
+        ];
+
+        // --- ESTADO DE LA APLICACIÓN ---
+        let registrosAccesos = [];
+        let idContador = 1;
+        let registroActivoParaAsociar = null;
+        let usuarioSeleccionado = null;
+
+        // --- ELEMENTOS DOM ---
+        const tablaRegistros = document.getElementById('tabla-registros');
+        const toastContainer = document.getElementById('toast-container');
+        const badgeAlertas = document.getElementById('alert-badge');
+        const bellIcon = document.getElementById('bell-icon');
+
+        // Elementos del Modal
+        const modal = document.getElementById('modal-asociacion');
+        const modalContent = document.getElementById('modal-content');
+        const modalFoto = document.getElementById('modal-foto');
+        const modalDetalles = document.getElementById('modal-detalles');
+        const inputBuscador = document.getElementById('buscador-usuarios');
+        const listaResultados = document.getElementById('lista-resultados');
+        const btnConfirmar = document.getElementById('btn-confirmar');
+
+        // 1. GENERAR ACCESO MÁSTER (Simulador)
+        window.simularAccesoMaster = function () {
+            const tipo = document.querySelector('input[name="sim-tipo"]:checked').value;
+            const ahora = new Date();
+            // Simulamos una foto aleatoria capturada por la cámara del torniquete
+            const randomSeed = Math.floor(Math.random() * 10000);
+            const fotoCamara = `https://i.pravatar.cc/150?u=${randomSeed}`;
+
+            const nuevoRegistro = {
+                id: idContador++,
+                tipo: tipo,
+                timestamp: ahora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                fotoCamara: fotoCamara,
+                usuarioAsociado: null // Empieza sin usuario (el problema a resolver)
+            };
+
+            registrosAccesos.unshift(nuevoRegistro);
+            crearNotificacion(nuevoRegistro);
+            renderizarTabla();
+            actualizarCampana();
+        };
+
+        // 2. RENDERIZAR TABLA DE BACKOFFICE
+        function renderizarTabla() {
+            tablaRegistros.innerHTML = '';
+
+            if (registrosAccesos.length === 0) {
+                tablaRegistros.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-slate-400">Sistema operando con normalidad. No hay registros de accesos máster.</td></tr>`;
+                return;
+            }
+
+            registrosAccesos.forEach(reg => {
+                const tr = document.createElement('tr');
+                const tipoColor = reg.tipo === 'Entrada' ? 'text-blue-600 bg-blue-50' : 'text-orange-600 bg-orange-50';
+
+                // Opacidad si ya está resuelto
+                if (reg.usuarioAsociado) {
+                    tr.className = 'bg-slate-50 opacity-70';
+                } else {
+                    tr.className = 'bg-white hover:bg-slate-50 transition duration-150';
+                }
+
+                tr.innerHTML = `
+                    <td class="p-4 whitespace-nowrap text-slate-600 font-medium">
+                        ${reg.timestamp}
+                    </td>
+                    <td class="p-4">
+                        <img src="${reg.fotoCamara}" class="w-12 h-12 rounded-lg object-cover border border-slate-300 shadow-sm" alt="Cámara">
+                    </td>
+                    <td class="p-4">
+                        <span class="px-2.5 py-1 rounded-md text-xs font-bold ${tipoColor} border ${reg.tipo === 'Entrada' ? 'border-blue-200' : 'border-orange-200'}">
+                            ${reg.tipo}
+                        </span>
+                    </td>
+                    <td class="p-4">
+                        ${!reg.usuarioAsociado ? `
+                            <div class="flex items-center gap-2 text-red-500">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                <span class="text-sm font-semibold">Inconsistente (Requiere Asociación)</span>
+                            </div>
+                        ` : `
+                            <div class="flex items-center gap-3">
+                                <img src="${reg.usuarioAsociado.foto}" class="w-8 h-8 rounded-full border border-slate-300">
+                                <div>
+                                    <div class="text-sm font-bold text-slate-700">${reg.usuarioAsociado.nombre}</div>
+                                    <div class="text-xs text-emerald-600 font-medium">Paso habilitado correctamente</div>
+                                </div>
+                            </div>
+                        `}
+                    </td>
+                    <td class="p-4 text-right">
+                        ${!reg.usuarioAsociado ? `
+                            <button onclick="abrirModal(${reg.id})" class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold py-2 px-4 rounded-lg shadow-md transition transform active:scale-95">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                                Vincular Usuario
+                            </button>
+                        ` : `
+                            <span class="text-sm text-slate-400 font-medium flex items-center justify-end gap-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-emerald-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
+                                Resuelto
+                            </span>
+                        `}
+                    </td>
+                `;
+                tablaRegistros.appendChild(tr);
+            });
+        }
+
+        // 3. LÓGICA DEL MODAL Y BUSCADOR
+        window.abrirModal = function (id) {
+            registroActivoParaAsociar = registrosAccesos.find(r => r.id === id);
+            if (!registroActivoParaAsociar) return;
+
+            // Llenar datos del modal
+            modalFoto.src = registroActivoParaAsociar.fotoCamara;
+            modalDetalles.innerText = `${registroActivoParaAsociar.tipo} - Registrado a las ${registroActivoParaAsociar.timestamp}`;
+
+            // Resetear buscador
+            inputBuscador.value = '';
+            listaResultados.innerHTML = '';
+            listaResultados.classList.add('hidden');
+            usuarioSeleccionado = null;
+            actualizarBotonConfirmar();
+
+            // Mostrar modal
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                modalContent.classList.remove('scale-95');
+            }, 10);
+
+            inputBuscador.focus();
+        };
+
+        window.cerrarModal = function () {
+            modal.classList.add('opacity-0');
+            modalContent.classList.add('scale-95');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                registroActivoParaAsociar = null;
+            }, 300);
+        };
+
+        // Evento para el buscador a medida que escribe
+        inputBuscador.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase();
+            listaResultados.innerHTML = '';
+            usuarioSeleccionado = null;
+            actualizarBotonConfirmar();
+
+            if (query.length < 2) {
+                listaResultados.classList.add('hidden');
+                return;
+            }
+
+            const filtrados = bdUsuarios.filter(u =>
+                u.nombre.toLowerCase().includes(query) || u.id.includes(query)
+            );
+
+            if (filtrados.length === 0) {
+                listaResultados.innerHTML = `<div class="p-4 text-sm text-slate-500 text-center">No se encontraron usuarios.</div>`;
+                listaResultados.classList.remove('hidden');
+                return;
+            }
+
+            filtrados.forEach(user => {
+                const div = document.createElement('div');
+                div.className = 'p-3 hover:bg-blue-50 cursor-pointer flex items-center gap-3 transition';
+                div.onclick = () => seleccionarUsuario(user, div);
+                div.innerHTML = `
+                    <img src="${user.foto}" class="w-10 h-10 rounded-full border border-slate-200">
+                    <div>
+                        <div class="font-bold text-slate-800 text-sm">${user.nombre}</div>
+                        <div class="text-xs text-slate-500">ID: ${user.id} - ${user.depto}</div>
+                    </div>
+                `;
+                listaResultados.appendChild(div);
+            });
+            listaResultados.classList.remove('hidden');
+        });
+
+        window.seleccionarUsuario = function (user, elementoDOM) {
+            // Quitar estilo de seleccionado a los demás
+            Array.from(listaResultados.children).forEach(el => el.classList.remove('bg-blue-100', 'border-l-4', 'border-blue-500'));
+            // Aplicar estilo al seleccionado
+            elementoDOM.classList.add('bg-blue-100', 'border-l-4', 'border-blue-500');
+
+            usuarioSeleccionado = user;
+            actualizarBotonConfirmar();
+        };
+
+        function actualizarBotonConfirmar() {
+            if (usuarioSeleccionado) {
+                btnConfirmar.disabled = false;
+                btnConfirmar.classList.remove('opacity-50', 'cursor-not-allowed');
+            } else {
+                btnConfirmar.disabled = true;
+                btnConfirmar.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+        }
+
+        window.confirmarAsociacion = function () {
+            if (!registroActivoParaAsociar || !usuarioSeleccionado) return;
+
+            // Aquí sucede la "magia" -> Se asocia y se habilita el paso en la cuenta
+            registroActivoParaAsociar.usuarioAsociado = usuarioSeleccionado;
+
+            cerrarModal();
+            renderizarTabla();
+            actualizarCampana();
+        };
+
+        // 4. NOTIFICACIONES Y CAMPANA
+        function crearNotificacion(registro) {
+            const toast = document.createElement('div');
+            toast.className = 'bg-slate-800 border-l-4 border-red-500 shadow-xl rounded-lg p-4 w-80 toast-enter flex items-start gap-3 relative text-white';
+
+            toast.innerHTML = `
+                <img src="${registro.fotoCamara}" class="w-10 h-10 rounded object-cover border border-slate-600">
+                <div class="flex-1">
+                    <h4 class="text-sm font-bold text-red-400">Nuevo Acceso Máster</h4>
+                    <p class="text-xs text-slate-300 mt-1">Se detectó una <b>${registro.tipo}</b> que requiere asociación manual.</p>
+                </div>
+                <button class="absolute top-2 right-2 text-slate-400 hover:text-white" onclick="this.parentElement.classList.replace('toast-enter', 'toast-exit'); setTimeout(()=>this.parentElement.remove(), 500)">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            `;
+
+            toastContainer.appendChild(toast);
+            bellIcon.classList.add('ringing');
+            setTimeout(() => bellIcon.classList.remove('ringing'), 1000);
+
+            setTimeout(() => {
+                if (toast.parentElement) {
+                    toast.classList.replace('toast-enter', 'toast-exit');
+                    setTimeout(() => toast.remove(), 500);
+                }
+            }, 8000);
+        }
+
+        function actualizarCampana() {
+            const pendientes = registrosAccesos.filter(r => !r.usuarioAsociado).length;
+            if (pendientes > 0) {
+                badgeAlertas.classList.remove('hidden');
+                badgeAlertas.innerText = pendientes;
+            } else {
+                badgeAlertas.classList.add('hidden');
+            }
+        }
+
+        // Inicializar
+        renderizarTabla();
+    </script>
+</body>
+
+</html>
